@@ -5,6 +5,7 @@
 # and any modifications thereto.  Any use, reproduction, disclosure or
 # distribution of this software and related documentation without an express
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
+from omni.cuopt.microservice.cuopt_microservice_manager import cuOptRunner
 
 from omni.isaac.examples.base_sample import BaseSample
 from omni.kit.commands import execute
@@ -20,40 +21,13 @@ from queue import Queue
 from gym import spaces
 from pxr import Gf, Sdf
 
-
-
 import omni
 import gym
 import numpy as np
-
-
-
-
-# from omni.cuopt.microservice.waypoint_graph_model import (
-#     WaypointGraphModel,
-#     load_waypoint_graph_from_file,
-# )
-# from omni.cuopt.visualization.generate_waypoint_graph import (
-#     visualize_waypoint_graph,
-# )
-# import omni
-# import omni.ui as ui
-# import asyncio
-
-
-# from omni.cuopt.microservice.transport_orders import TransportOrders
-# from omni.cuopt.microservice.transport_vehicles import TransportVehicles
-# from omni.cuopt.microservice.cuopt_data_proc import preprocess_cuopt_data
-# from omni.cuopt.microservice.cuopt_microservice_manager import cuOptRunner
-# from omni.cuopt.microservice.common import show_vehicle_routes, test_connection
-
-
+import json
 
 from omni.cuopt.visualization.generate_orders import visualize_order_locations
 from pxr import Gf
-
-
-# Note: checkout the required tutorials at https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/overview.html
 
 
 class CoffeeDeliveryBot(BaseSample):
@@ -67,68 +41,113 @@ class CoffeeDeliveryBot(BaseSample):
         self.stage = omni.usd.get_context().get_stage()
 
         self._skip_frame = 4
-        #================= PATH =================
+        
+        #================= PATH PLANNING =================
+        
+        with open('/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/waypoint_graph1.json', 'r') as f:
+            data = json.load(f)
+        data = dict(data)
+        graph = data['graph']
+        self.node_location = data['node_locations']
 
-        # self._orders_obj = TransportOrders()
-        # self._vehicles_obj = TransportVehicles()
-        # self._semantics = []
-        # self.waypoint_graph_node_path = "/World/WaypointGraph/Nodes"
-        # self.waypoint_graph_edge_path = "/World/WaypointGraph/Edges"
-        # print("Running cuOpt")
-        # self._usd_context = omni.usd.get_context()
-        # self._stage = self._usd_context.get_stage()
-        # waypoint_graph_data_path = (
-        #     "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/waypoint_graph1.json"
-        # )
-        # self._waypoint_graph_model = load_waypoint_graph_from_file(
-        #     self._stage, waypoint_graph_data_path
-        # )
-        # print(self._waypoint_graph_model.node_path_map)
-        # orders_path = "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/orders_data.json"
-        # self._orders_obj.load_sample(orders_path)
-        # vehicle_data_path = "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/vehicle_data.json"
-        # self._vehicles_obj.load_sample(vehicle_data_path)
-        # visualize_waypoint_graph(
-        #     self._stage,
-        #     self._waypoint_graph_model,
-        #     self.waypoint_graph_node_path,
-        #     self.waypoint_graph_edge_path,
-        # )
-        
-        # visualize_order_locations(
-        #     self._stage, self._waypoint_graph_model, self._orders_obj
-        # )
-        # order_inds = []
-        
-        # print(self._stage)
-        
-        # for xyz_loc in self._orders_obj.order_xyz_locations:
-        #     print(Gf.Vec3d(xyz_loc[0], xyz_loc[1], xyz_loc[2]))
+        with open('/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/vehicle_data.json','r') as f:
+            data_v = json.load(f)
+        data_v = dict(data_v)
+        vehicle_locations = data_v['vehicle_locations']
+        capacities = data_v['capacities']
+
+        with open('/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/orders_data.json','r') as f:
+            data_o = json.load(f)
+        data_o = dict(data_o)
+        task_locations = data_o['task_locations']
+        demand = data_o['demand']
+
+        nodes = list(graph.items())
+        weightsList = []
+        weightsListNested = []
+        for node_num, edges in nodes:
+            weights = []
+            for edge in edges.values():
+                for element in edge:
+                    node_num = int(node_num)
+                    weight = np.linalg.norm(np.array(self.node_location[node_num])-np.array(self.node_location[element]))
+                    weights.append(weight)
+            weightsList.extend(weights)
+            weightsListNested.append(weights)
+        modified_graph = {}
+        for node, edges in graph.items():
+            node_info = {}
+            node_info["edges"] = edges["edges"]
+            node_info["weights"] = weightsListNested[int(node)]
+            modified_graph[int(node)] = node_info
+        def convert_to_csr(graph):
+            num_nodes = len(graph)
             
-        #     min_dist = None
-        #     closest_node_path = None
-        #     closest_waypoint_path = None
-        #     print(self._waypoint_graph_model.path_node_map)
-        #     for node_path in self._waypoint_graph_model.path_node_map:
-        #         node_prim = self._stage.GetPrimAtPath(node_path)
-        #         node_point = get_prim_translation(node_prim)
-        #         distance = (node_point - Gf.Vec3d(xyz_loc[0], xyz_loc[1], xyz_loc[2])).GetLength()
-        #         if min_dist is None:
-        #             min_dist = distance
-        #             closest_node_path = node_path
-        #         elif min_dist > distance:
-        #             min_dist = distance
-        #             closest_node_path = node_path
-        #         closest_waypoint_path = closest_node_path
+            offsets = []
+            edges = []
+            weights = []
             
-        #     closest_node_prim = self._stage.GetPrimAtPath(closest_waypoint_path)
-        #     order_inds.append(
-        #         self._waypoint_graph_model.path_node_map[closest_waypoint_path]
-        #     )
-        # self._orders.obj.graph_locations = order_inds
+            cur_offset = 0
+            for node in range(num_nodes):
+                offsets.append(cur_offset)
+                cur_offset += len(graph[node]["edges"])
+                
+                edges = edges + graph[node]["edges"]
+                weights = weights + graph[node]["weights"]
+                
+            offsets.append(cur_offset)
+            
+            return offsets, edges, weights
+        offsets, edges, weights = convert_to_csr(modified_graph)
+        task_location_list = []
+
+        for location in task_locations:
+            for idx, node in enumerate(self.node_location):
+                if location == node:
+                    task_location_list.append(idx)
+        waypoint_graph_data = {}
+        sum_info = {}
+        sum_info["offsets"] = list(offsets)
+        sum_info["edges"] = list(edges)
+        sum_info["weights"] = list(weights)
+        waypoint_graph_data["waypoint_graph"] = {}
+        waypoint_graph_data["waypoint_graph"]['0'] = sum_info
+
+        fleet_data = {}
+        fleet_data["vehicle_locations"] = vehicle_locations
+        fleet_data["capacities"] = capacities
+        fleet_data["vehicle_time_windows"] = None
+
+        task_data = {}
+        task_data["task_locations"] = task_location_list
+        task_data["demand"] = demand
+        task_data["task_time_windows"] = None
+        task_data["service_times"] = None
         
-        # cuopt_url = self._form_cuopt_url()
-        
+        cuopt_url = "http://0.0.0.0:5000/cuopt/"
+        # Solver Settings
+        solver_config = {
+            "time_limit": 0.01,
+            "number_of_climbers": 128,
+            "min_vehicles": None,
+            "max_slack": None,
+            "solution_scope": None,
+            "max_lateness_per_route": None,
+        }
+        cuopt_server = cuOptRunner(cuopt_url)
+        cuopt_server.set_environment_data(
+            waypoint_graph_data, "waypoint_graph"
+        )
+        cuopt_server.set_fleet_data(fleet_data)
+        cuopt_server.set_task_data(task_data)
+        cuopt_server.set_solver_config(solver_config)
+        cuopt_solution = cuopt_server.solve()
+        routes = cuopt_solution
+        routes = dict(routes)
+        print(routes)
+        print(routes["vehicle_data"]["0"]['route'])
+        routes = routes["vehicle_data"]["0"]['route']
+        # routes = list(map(int, routes))
         
         #================= ENVIRONMENT =================
         
@@ -169,6 +188,30 @@ class CoffeeDeliveryBot(BaseSample):
         
         agent_asset_path ="/home/hyeonsu/Documents/catkin_ws/src/scout_ros/scout_description/urdf/scout_v2/scout_v2.usd"
         
+
+        self.path_planning = Queue()
+        for element in routes:
+            self.path_planning.put(element)
+        
+        self.path_planning.get()
+        self.path_planning.get()
+        self.path_planning.get()
+        self.path_planning.get()
+        self.path_planning.get()
+        self.path_planning.get()
+        self.path_planning.get()
+        position = self.node_location[self.path_planning.get()]
+        
+        self.goal = self._my_world.scene.add(
+            VisualCuboid(
+                prim_path="/World/new_cube_1",
+                name="visual_cube",
+                position=np.array(position),
+                size=0.2,
+                color=np.array([1.0, 0, 0]),
+            )
+        )
+        
         self.agent = self._my_world.scene.add(
             WheeledRobot(
                 prim_path="/World/scout_v2",
@@ -177,22 +220,10 @@ class CoffeeDeliveryBot(BaseSample):
                 wheel_dof_indices=[0,1,2,3],
                 create_robot=True,
                 usd_path=agent_asset_path,
-                position=np.array([1, 2, 0.4]),
+                position=np.array(position),
                 orientation=np.array([1.0, 0.0, 0.0, 0.0]),
             )
         )
-        
-        self.goal = self._my_world.scene.add(
-            VisualCuboid(
-                prim_path="/World/new_cube_1",
-                name="visual_cube",
-                position=np.array([0, 0, 0.5]),
-                size=0.2,
-                color=np.array([1.0, 0, 0]),
-            )
-        )
-        
-        self.path_planning = Queue()
         
         lidarPath = "/lidar"
         parent    = "/World/scout_v2/base_link"
@@ -389,7 +420,7 @@ class CoffeeDeliveryBot(BaseSample):
         distance = np.linalg.norm(goal_world_position - agent_position)
         if distance < 1:
             if self.path_planning.qsize()>0:
-                next_goal_pos = self.path_planning.get()
+                next_goal_pos = self.node_location[self.path_planning.get()]
                 self.goal.set_world_pose(np.array(next_goal_pos))
                 print(self.goal.get_world_pose())
         return

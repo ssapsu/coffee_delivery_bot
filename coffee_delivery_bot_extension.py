@@ -102,6 +102,7 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
         self.task_ui_elements["Move"].enabled = True
         return
 
+    
     def post_clear_button_event(self):
         return
     
@@ -122,6 +123,7 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
         self._cuopt_status_info.text = test_connection(cuopt_ip, cuopt_port)
 
     def _load_waypoint_graph(self):
+        
         map_asset_path ="/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/maps/5f/5f_0919.usd"
         
         execute(
@@ -139,7 +141,6 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
         )
         
         import omni.kit.commands
-        from pxr import Usd, Gf, Sdf
 
         print("loading waypoint graph")
         self._usd_context = omni.usd.get_context()
@@ -161,6 +162,8 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
             self.waypoint_graph_edge_path,
         )
         self._network_ui_data.text = f"Waypoint Graph Network Loaded: {len(self._waypoint_graph_model.nodes)} nodes, {len(self._waypoint_graph_model.edges)} edges"
+        # val = True
+        # asyncio.ensure_future(self.sample._on_load_waypoint_graph_button(val))
 
     def _load_orders(self):
         print("Loading Orders")
@@ -184,26 +187,6 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
 
     def _run_cuopt(self):
         print("Running cuOpt")
-        self._usd_context = omni.usd.get_context()
-        self._stage = self._usd_context.get_stage()
-        waypoint_graph_data_path = (
-            "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/waypoint_graph1.json"
-        )
-        self._waypoint_graph_model = load_waypoint_graph_from_file(
-            self._stage, waypoint_graph_data_path
-        )
-        
-        orders_path = "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/orders_data.json"
-        self._orders_obj.load_sample(orders_path)
-        vehicle_data_path = "/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/vehicle_data.json"
-        self._vehicles_obj.load_sample(vehicle_data_path)
-
-        
-        with open('/home/hyeonsu/.local/share/ov/pkg/isaac_sim-2022.2.1/exts/omni.isaac.examples/omni/isaac/examples/coffee_delivery_bot/assets/waypoint/waypoint_graph1.json','r') as f:
-            json_data = json.load(f)
-        json_data = json.dumps(json_data)
-        nodeData = json.loads(json_data)
-        nodeLocation = nodeData["node_locations"]
             
         cuopt_url = self._form_cuopt_url()
         # Solver Settings
@@ -221,98 +204,12 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
             self._waypoint_graph_model, self._orders_obj, self._vehicles_obj
         )
         print(waypoint_graph_data, fleet_data, task_data)
-        
-        
-        task_locations = []
-        for location in task_data['task_locations']:
-            for idx, node in enumerate(nodeLocation):
-                if (node == location):
-                    task_locations.append(idx)
-        print(task_locations)
-        task_data['task_locations'] = task_locations
-        
-        def add_edge_to_scene(self, stage, edge_prim_path, point_from, point_to):
-            edge_prim_geom = UsdGeom.Cylinder.Define(stage, edge_prim_path)
-
-            edge_vector = point_to - point_from
-            edge_prim = edge_prim_geom.GetPrim()
-            xf = UsdGeom.Xformable(edge_prim_geom)
-            xf.ClearXformOpOrder()
-            xf.AddTranslateOp().Set(point_from + edge_vector * 0.5)
-            n = edge_vector.GetNormalized()
-            r = Gf.Rotation(Gf.Vec3d(0, 0, 1), Gf.Vec3d(n[0], n[1], n[2]))
-            xf.AddOrientOp(UsdGeom.XformOp.PrecisionDouble).Set(r.GetQuat())
-            xf.AddScaleOp().Set(
-                Gf.Vec3d(
-                    self.edge_radius / 3,
-                    self.edge_radius / 3,
-                    edge_vector.GetLength() / 2,
-                )
-            )
-            edge_prim.CreateAttribute("baseweight", Sdf.ValueTypeNames.Float).Set(
-                edge_vector.GetLength()
-            )
-            edge_prim.CreateAttribute("weight", Sdf.ValueTypeNames.Float).Set(
-                edge_vector.GetLength()
-            )
-            UsdShade.MaterialBindingAPI(edge_prim).Bind(self.waypoint_material)
-
-            return edge_prim.GetAttribute("weight").Get()
-        
-        
-        def visualize_and_record_edge(
-            model, stage, edge_prim_path, point_from, point_to
-        ):
-
-            weight = model.visualization.add_edge_to_scene(
-                stage, edge_prim_path, point_from, point_to
-            )
-
-            # Data recording
-            model.edge_path_map[model.edge_count] = edge_prim_path
-            model.path_edge_map[edge_prim_path] = model.edge_count
-            model.weights.append(weight)
-            model.edge_count = model.edge_count + 1
-
-        def visualize_waypoint_graph(
-            stage, model, waypoint_graph_node_path, waypoint_graph_edge_path
-        ):
-
-            offset_node_lookup = model.offset_node_lookup
-
-            for i in range(0, len(model.offsets) - 1):
-                for j in range(model.offsets[i], model.offsets[i + 1]):
-                    edge_prim_path = f"{waypoint_graph_edge_path}/Edge_{offset_node_lookup[i]}_{model.edges[j]}"
-
-                    if str(offset_node_lookup[i]) not in model.node_edge_map:
-                        model.node_edge_map[str(offset_node_lookup[i])] = [
-                            model.edges[j]
-                        ]
-                    else:
-                        model.node_edge_map[str(offset_node_lookup[i])].append(
-                            model.edges[j]
-                        )
-
-                    point_from = Gf.Vec3d(model.nodes[int(offset_node_lookup[i])])
-                    point_to = Gf.Vec3d(model.nodes[model.edges[j]])
-                    visualize_and_record_edge(
-                        model, stage, edge_prim_path, point_from, point_to
-                    )
-        
-        visualize_waypoint_graph(
-            self._stage,
-            self._waypoint_graph_model,
-            self.waypoint_graph_node_path,
-            self.waypoint_graph_edge_path,
-        )
-        
         cuopt_server = cuOptRunner(cuopt_url)
 
         # Initialize server data and call for solve
         cuopt_server.set_environment_data(
             waypoint_graph_data, "waypoint_graph"
         )
-        print(waypoint_graph_data, fleet_data, task_data)
         cuopt_server.set_fleet_data(fleet_data)
         cuopt_server.set_task_data(task_data)
         cuopt_server.set_solver_config(solver_config)
@@ -320,12 +217,12 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
         routes = cuopt_solution
 
         # Visualize the optimized routes
-        # self._waypoint_graph_model.visualization.display_routes(
-        #     self._stage,
-        #     self._waypoint_graph_model,
-        #     self.waypoint_graph_edge_path,
-        #     routes,
-        # )
+        self._waypoint_graph_model.visualization.display_routes(
+            self._stage,
+            self._waypoint_graph_model,
+            self.waypoint_graph_edge_path,
+            routes,
+        )
 
         # Display the routes on UI
         self._routes_ui_message.text = show_vehicle_routes(routes)
@@ -345,7 +242,7 @@ class CoffeeDeliveryBotExtension(BaseSampleExtension):
                     "on_clicked_fn": self._on_move_button_event,
                 }
                 self.task_ui_elements["Move"] = state_btn_builder(**dict)
-                self.task_ui_elements["Move"].enabled = False
+                self.task_ui_elements["Move"].enabled = True
         
         # # Display the routes on UI
         # self._routes_ui_message.text = show_vehicle_routes(routes)
